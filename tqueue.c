@@ -343,10 +343,11 @@ unsigned TQueueHash(pthread_t *thread){
     unsigned long hash = 0xcbf29ce484222325;
     unsigned long prime = 0x100000001b3;
     unsigned long x = *((unsigned long*)thread);
+    printf("HASH INIT: %ld\n",x);
     do {
-        hash = (hash ^ (x && 0xff))*prime;
-    } while(x >> 8);
-    return (unsigned)((x) % (unsigned long)HASHMAP_SIZE);
+        hash = (hash ^ (x & 0xff))*prime;
+    } while(x >>= 8);
+    return (unsigned)((hash) % (unsigned long)HASHMAP_SIZE);
 }
 
 void TQueueCleanUp(TQueue *queue){
