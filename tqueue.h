@@ -1,7 +1,7 @@
 #pragma once
 #include <pthread.h>
 
-#define HASHMAP_SIZE 4U
+#define HASHMAP_SIZE 16U
 
 typedef struct TQueueMessage TQueueMessage;
 typedef struct TQueueThread TQueueThread;

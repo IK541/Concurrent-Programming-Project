@@ -56,6 +56,8 @@ void* subscriber(void* arg){
             TQueueUnsubscribe(tqueue,&this_thread);
             TQueueSubscribe(tqueue,&this_thread);
         }
+        n = TQueueGetAvailable(tqueue,&this_thread);
+        printf("> thread %d has available: %d\n",id,n);
     }
 
     TQueueUnsubscribe(tqueue,&this_thread);
@@ -70,11 +72,17 @@ void* remover(void* arg){
     int id = ((publisher_data*)arg)->id;
 
     int i = 0;
+    int* s = malloc(sizeof(int));
     while(1){
         i = (i+1)%ARR_SIZE;
         TQueueRemove(tqueue,arr[i]);
         printf("> thread %d removed: %d\n",id,*arr[i]);
+        if(!(i%16)){
+            *s = i+1;
+            TQueueSetSize(tqueue,s);
+        }
     }
+    free(s);
 
     return NULL;
 }

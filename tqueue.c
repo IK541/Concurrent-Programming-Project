@@ -224,7 +224,7 @@ void* TQueueGet(TQueue *queue, pthread_t *thread){
 unsigned TQueueGetAvailable(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
     TQueueMessage* message_ptr;
-    unsigned available;
+    unsigned available = 0;
 
     pthread_mutex_lock(&queue->lock);
 
@@ -311,8 +311,9 @@ void TQueueSetSize(TQueue *queue, int *size){
 
     queue->max_size = *size;
 
-    while(queue->size < queue->max_size){
+    while(queue->size > queue->max_size){
         to_remove = queue->head;
+        dbgprintf("to remove: %p\n",to_remove);
         queue->head = to_remove->next;
 
         for(unsigned i = 0; i < HASHMAP_SIZE; ++i){
@@ -327,6 +328,7 @@ void TQueueSetSize(TQueue *queue, int *size){
         to_remove->next->count -= to_remove->unsubscribed;
         to_remove->next->unsubscribed += to_remove->unsubscribed;
         free(to_remove);
+        --queue->size;
     }
 
     dbgprintf("AFTER SET_SIZE (%i)\n",*size);
@@ -338,7 +340,13 @@ void TQueueSetSize(TQueue *queue, int *size){
 // non-interface functions:
 
 unsigned TQueueHash(pthread_t *thread){
-    return (unsigned)(*((long unsigned*)thread) % 4294967311UL % (unsigned long)HASHMAP_SIZE);
+    unsigned long hash = 0xcbf29ce484222325;
+    unsigned long prime = 0x100000001b3;
+    unsigned long x = *((unsigned long*)thread);
+    do {
+        hash = (hash ^ (x && 0xff))*prime;
+    } while(x >> 8);
+    return (unsigned)((x) % (unsigned long)HASHMAP_SIZE);
 }
 
 void TQueueCleanUp(TQueue *queue){
