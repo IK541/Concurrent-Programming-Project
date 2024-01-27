@@ -1,0 +1,7 @@
+*
+
+!.gitignore
+!tqueue.h
+!tqueue.c
+!single.c
+!infinite.c
