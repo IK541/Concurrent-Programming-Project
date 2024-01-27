@@ -25,6 +25,10 @@ void TQueueCreateQueue(TQueue *queue, int *size){
     queue->head->message = NULL;
     queue->head->next = NULL;
 
+    queue->destroyed = 0;
+    queue->put_locked = 0;
+    queue->get_locked = 0;
+
     pthread_cond_init(&queue->get_cond,NULL);
     pthread_cond_init(&queue->put_cond,NULL);
     pthread_mutex_init(&queue->lock,NULL);
@@ -36,8 +40,23 @@ void TQueueCreateQueue(TQueue *queue, int *size){
 void TQueueDestroyQueue(TQueue *queue){
     pthread_mutex_lock(&queue->lock);
 
-    dbgprintf("DESTROYED QUEUE\n");
+    dbgprintf("DESTROYING QUEUE\n");
     dbgTQueuePrint(queue);
+
+    queue->destroyed = 1;
+
+    while(queue->get_locked){
+        dbgprintf("REMOVING SUBSCRIBERS\n");
+        pthread_cond_broadcast(&queue->get_cond);
+        pthread_cond_wait(&queue->put_cond,&queue->lock);
+        dbgprintf("RETRY DESTROYING (1)\n");
+    }
+    while(queue->put_locked){
+        dbgprintf("REMOVING PUBLISHERS\n");
+        pthread_cond_broadcast(&queue->put_cond);
+        pthread_cond_wait(&queue->get_cond,&queue->lock);
+        dbgprintf("RETRY DESTROYIN (2)\n");
+    }
 
     TQueueThread* hashmap_pos;
     TQueueThread* next_thread;
@@ -63,15 +82,20 @@ void TQueueDestroyQueue(TQueue *queue){
 
     pthread_mutex_unlock(&queue->lock);
     pthread_mutex_destroy(&queue->lock);
+
+    dbgprintf("DESTROYED QUEUE\n");
 }
 
-void TQueueSubscribe(TQueue *queue, pthread_t *thread){
+int TQueueSubscribe(TQueue *queue, pthread_t *thread){
+    int ret = -1;
     TQueueThread* thread_ptr;
     TQueueThread* new_thread = malloc(sizeof(TQueueThread));
     new_thread->thread = thread;
     new_thread->next = NULL;
 
     pthread_mutex_lock(&queue->lock);
+
+    if(queue->destroyed) goto end;
 
     dbgprintf("BEFORE SUBSCRIBE (%p)\n",thread);
     dbgTQueuePrint(queue);
@@ -89,17 +113,23 @@ void TQueueSubscribe(TQueue *queue, pthread_t *thread){
     }
     new_thread->message_ptr = queue->tail;
 
+    ret = 0;
+    end:
     dbgprintf("AFTER SUBSCRIBE (%p)\n",thread);
     dbgTQueuePrint(queue);
-
     pthread_mutex_unlock(&queue->lock);
+
+    return ret;
 }
 
-void TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
+int TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
+    int ret = -1;
     TQueueThread* thread_ptr;
     TQueueThread* last_ptr;
 
     pthread_mutex_lock(&queue->lock);
+
+    if(queue->destroyed) goto end;
 
     dbgprintf("BEFORE UNSUBSCRIBE (%p)\n",thread);
     dbgTQueuePrint(queue);
@@ -123,15 +153,17 @@ void TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
 
     free(thread_ptr);
 
+    ret = 0;
     end:
-
     dbgprintf("AFTER UNSUBSCRIBE (%p)\n",thread);
     dbgTQueuePrint(queue);
-
     pthread_mutex_unlock(&queue->lock);
+
+    return ret;
 }
 
-void TQueuePut(TQueue *queue, void *msg){
+int TQueuePut(TQueue *queue, void *msg){
+    int ret = -1;
     TQueueMessage* new_message = malloc(sizeof(TQueueMessage));
     new_message->next = NULL;
     new_message->unsubscribed = 0;
@@ -140,18 +172,27 @@ void TQueuePut(TQueue *queue, void *msg){
 
     pthread_mutex_lock(&queue->lock);
 
+    if(queue->destroyed) goto end;
+
     dbgprintf("TRY PUT (%p)\n",msg);
     dbgTQueuePrint(queue);
 
     if(!queue->subscribers) {
         dbgprintf("NO SUBSCRIBERS\n");
+        ret = 0;
         goto end;
     }
  
     while(queue->size >= queue->max_size){
         dbgprintf("FAIL PUT (%p)\n",msg);
+        ++queue->put_locked;
         pthread_cond_wait(&queue->put_cond, &queue->lock);
+        --queue->put_locked;
         dbgprintf("RETRY PUT (%p)\n",msg);
+        if(queue->destroyed) {
+            pthread_cond_broadcast(&queue->get_cond);
+            goto end;
+        }
     }
 
     dbgprintf("BEFORE PUT (%p)\n",msg);
@@ -166,12 +207,13 @@ void TQueuePut(TQueue *queue, void *msg){
     queue->tail = tail->next;
     pthread_cond_broadcast(&queue->get_cond);
 
+    ret = 0;
     end:
-
     dbgprintf("AFTER PUT (%p)\n",msg);
     dbgTQueuePrint(queue);
-
     pthread_mutex_unlock(&queue->lock);
+
+    return ret;
 }
 
 void* TQueueGet(TQueue *queue, pthread_t *thread){
@@ -180,6 +222,8 @@ void* TQueueGet(TQueue *queue, pthread_t *thread){
     void* msg = NULL;
     
     pthread_mutex_lock(&queue->lock);
+
+    if(queue->destroyed) goto end;
 
     dbgprintf("TRY GET (%p)\n",thread);
     dbgTQueuePrint(queue);
@@ -191,8 +235,14 @@ void* TQueueGet(TQueue *queue, pthread_t *thread){
 
     while(thread_ptr->message_ptr->next == NULL){
         dbgprintf("FAIL GET (%p)\n",thread);
+        ++queue->get_locked;
         pthread_cond_wait(&queue->get_cond,&queue->lock);
+        --queue->get_locked;
         dbgprintf("RETRY GET (%p)\n",thread);
+        if(queue->destroyed){
+            pthread_cond_broadcast(&queue->put_cond);
+            goto end;
+        }
     }
 
     dbgprintf("BEFORE GET (%p)\n",thread);
@@ -221,12 +271,14 @@ void* TQueueGet(TQueue *queue, pthread_t *thread){
     return msg;
 }
 
-unsigned TQueueGetAvailable(TQueue *queue, pthread_t *thread){
+int TQueueGetAvailable(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
     TQueueMessage* message_ptr;
-    unsigned available = 0;
+    int available = -1;
 
     pthread_mutex_lock(&queue->lock);
+
+    if(queue->destroyed) goto end;
 
     dbgprintf("BEFORE GET_AVAILABLE (%p)\n",thread);
     dbgTQueuePrint(queue);
@@ -234,7 +286,11 @@ unsigned TQueueGetAvailable(TQueue *queue, pthread_t *thread){
     thread_ptr = queue->hashmap[TQueueHash(thread)];
     while(thread_ptr != NULL && thread_ptr->thread != thread){
         thread_ptr = thread_ptr->next;
-    } if(thread_ptr == NULL) return 0;
+    }
+    if(thread_ptr == NULL) {
+        available = 0;
+        goto end;
+    }
     message_ptr = thread_ptr->message_ptr;
     
     while(message_ptr->next != NULL){
@@ -242,20 +298,23 @@ unsigned TQueueGetAvailable(TQueue *queue, pthread_t *thread){
         ++available;
     }
 
+    end:
     dbgprintf("AFTER GET_AVAILABLE (%p)\n",thread);
     dbgTQueuePrint(queue);
-
     pthread_mutex_unlock(&queue->lock);
 
     return available;
 }
 
-void TQueueRemove(TQueue *queue, void *msg){
+int TQueueRemove(TQueue *queue, void *msg){
+    int ret = -1;
     TQueueMessage* last_message;
     TQueueMessage* message_ptr;
     TQueueThread* thread_ptr;
 
     pthread_mutex_lock(&queue->lock);
+
+    if(queue->destroyed) goto end;
     
     dbgprintf("BEFORE REMOVE (%p)\n",msg);
     dbgTQueuePrint(queue);
@@ -292,19 +351,26 @@ void TQueueRemove(TQueue *queue, void *msg){
     --queue->size;
     pthread_cond_broadcast(&queue->put_cond);
 
+    ret = 0;
+
     end:
 
     dbgprintf("AFTER REMOVE (%p)\n",msg);
     dbgTQueuePrint(queue);
 
     pthread_mutex_unlock(&queue->lock);
+
+    return ret;
 }
 
-void TQueueSetSize(TQueue *queue, int *size){
+int TQueueSetSize(TQueue *queue, int *size){
+    int ret = -1;
     TQueueMessage* to_remove;
     TQueueThread* thread_ptr;
 
     pthread_mutex_lock(&queue->lock);
+
+    if(queue->destroyed) goto end;
 
     dbgprintf("BEFORE SET_SIZE (%i)\n",*size);
     dbgTQueuePrint(queue);
@@ -331,10 +397,14 @@ void TQueueSetSize(TQueue *queue, int *size){
         --queue->size;
     }
 
+    ret = 0;
+
+    end:
     dbgprintf("AFTER SET_SIZE (%i)\n",*size);
     dbgTQueuePrint(queue);
-
     pthread_mutex_unlock(&queue->lock);
+
+    return ret;
 }
 
 // non-interface functions:
@@ -374,6 +444,9 @@ void TQueuePrint(TQueue *queue){
     printf("subscribers: %d\n", queue->subscribers);
     printf("head: %p\n", queue->head);
     printf("tail: %p\n", queue->tail);
+    printf("destroyed: %d\n", queue->destroyed);
+    printf("get locked: %d\n", queue->get_locked);
+    printf("put locked: %d\n", queue->put_locked);
     printf("hashmap:\n");
     for(int i = 0; i < HASHMAP_SIZE; ++i){
         printf("[%d]",i);

@@ -5,15 +5,14 @@
 
 #include "tqueue.h"
 
-#define QUEUE_SIZE 256
-#define PUBLISHERS 16
-#define SUBSCRIBERS 64
-#define PUBLICATIONS 256
-#define ARR_SIZE (PUBLISHERS*PUBLICATIONS)
+#define QUEUE_SIZE 16
 
-volatile int ready;
-pthread_mutex_t lock;
-pthread_cond_t cond;
+#define PUBLISHERS 4
+#define PUBLICATIONS 16
+#define SUBSCRIBERS 16
+#define REMOVERS 1
+
+#define ARR_SIZE (PUBLISHERS*PUBLICATIONS)
 
 typedef struct publisher_data{
     TQueue* tqueue;
@@ -31,14 +30,25 @@ void* publisher(void* arg){
     TQueue* tqueue = ((publisher_data*)arg)->tqueue;
     int id = ((publisher_data*)arg)->id;
 
-    pthread_mutex_lock(&lock);
-    while(ready < SUBSCRIBERS) pthread_cond_wait(&cond,&lock);
-    pthread_mutex_unlock(&lock);
-
-    for(int i = 0; i < PUBLICATIONS; ++i){
-        TQueuePut(tqueue,arr[i*PUBLISHERS+id]);
+    int i = 0;
+    unsigned rand_state = id, rand_num;
+    while(1){
+        i = (i+1)%PUBLICATIONS;
+        if(TQueuePut(tqueue,arr[i*PUBLISHERS+id])) break;
         printf("> thread %d put: %d\n",id,*arr[i*PUBLISHERS+id]);
+
+        if(i) continue;
+
+        rand_num = rand_r(&rand_state) % ARR_SIZE;
+        if(TQueueRemove(tqueue,arr[rand_num])) break;
+        printf("> thread %d removed: %d\n",id,*arr[i]);
+        if(!(rand_num%16)){
+            rand_num += 1;
+            if(TQueueSetSize(tqueue,(int*)&rand_num)) break;
+        }
     }
+
+    printf("[SUBSCRIBER END]\n");
 
     return NULL;
 }
@@ -50,23 +60,29 @@ void* subscriber(void* arg){
     int id = ((subscriber_data*)arg)->id;
 
     TQueueSubscribe(tqueue,&this_thread);
-    pthread_mutex_lock(&lock);
-    ++ready;
-    pthread_mutex_unlock(&lock);
 
+    int* np;
     int n;
-    if(ready >= SUBSCRIBERS) {
-        pthread_cond_broadcast(&cond);
-    }
-    for(int i = 0; i < ARR_SIZE; ++i){
-        n = *(int*)TQueueGet(tqueue,&this_thread);
+    while(1){
+        np = (int*)TQueueGet(tqueue,&this_thread);
+        if(np == NULL) break;
+        n = *np;
         printf("> thread %d got: %d\n",id,n);
+    //     if(!(n%16)){
+    //         // if(TQueueUnsubscribe(tqueue,&this_thread)) break;
+    //         // if(TQueueSubscribe(tqueue,&this_thread)) break;
+    //     }
+    //     n = TQueueGetAvailable(tqueue,&this_thread);
+    //     if(n < 0) break;
+    //     printf("> thread %d has available: %d\n",id,n);
     }
+
     TQueueUnsubscribe(tqueue,&this_thread);
+
+    printf("[PUBLISHER END]\n");
 
     return NULL;
 }
-
 
 int main() {
     TQueue tqueue;
@@ -78,6 +94,8 @@ int main() {
         arr[i] = malloc(sizeof(int));
         *arr[i] = i;
     }
+
+
 
     pthread_t** publishers = malloc(PUBLISHERS*sizeof(pthread_t*));
     publisher_data** pub_data_arr = malloc(PUBLISHERS*(sizeof(publisher_data*)));
@@ -98,9 +116,8 @@ int main() {
         sub_data_arr[i]->id = i;
     }
 
-    ready = 0;
-    pthread_mutex_init(&lock,NULL);
-    pthread_cond_init(&cond,NULL);
+
+
 
     for(int i = 0; i < PUBLISHERS; ++i){
         pthread_create(publishers[i],NULL,publisher,pub_data_arr[i]);
@@ -109,15 +126,16 @@ int main() {
         pthread_create(subscribers[i],NULL,subscriber,sub_data_arr[i]);
     }
 
+    sleep(1);
+
+    TQueueDestroyQueue(&tqueue);
+
     for(int i = 0; i < PUBLISHERS; ++i){
         pthread_join(*publishers[i],NULL);
     }
     for(int i = 0; i < SUBSCRIBERS; ++i){
         pthread_join(*subscribers[i],NULL);
     }
-
-    pthread_mutex_destroy(&lock);
-    pthread_cond_destroy(&cond);
 
     for(int i = 0; i < PUBLISHERS; ++i){
         free(publishers[i]);
@@ -137,7 +155,5 @@ int main() {
     for(int i = 0; i < ARR_SIZE; ++i) free(arr[i]);
     free(arr);
 
-    TQueueDestroyQueue(&tqueue);
-
-    return 0;
+    return 0;    
 }
