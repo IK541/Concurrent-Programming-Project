@@ -43,5 +43,5 @@ void TQueueRemove(TQueue *queue, void *msg);
 void TQueueSetSize(TQueue *queue, int *size);
 
 unsigned TQueueHash(pthread_t *thread);
-// static void TQueueCleanUp(TQueue *queue)
+void TQueueCleanUp(TQueue *queue);
 void TQueuePrint(TQueue *tqueue);

@@ -52,10 +52,10 @@ void* subscriber(void* arg){
     while(1){
         n = *(int*)TQueueGet(tqueue,&this_thread);
         printf("> thread %d got: %d\n",id,n);
-        // if(!(n%16)){
-        //     TQueueUnsubscribe(tqueue,&this_thread);
-        //     TQueueSubscribe(tqueue,&this_thread);
-        // }
+        if(!(n%16)){
+            TQueueUnsubscribe(tqueue,&this_thread);
+            TQueueSubscribe(tqueue,&this_thread);
+        }
     }
 
     TQueueUnsubscribe(tqueue,&this_thread);

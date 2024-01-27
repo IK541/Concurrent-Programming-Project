@@ -58,7 +58,6 @@ void TQueueDestroyQueue(TQueue *queue){
         queue->head = node;
     }
 
-    // Can it be done safely?
     pthread_cond_destroy(&queue->get_cond);
     pthread_cond_destroy(&queue->put_cond);
 
@@ -68,7 +67,6 @@ void TQueueDestroyQueue(TQueue *queue){
 
 void TQueueSubscribe(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
-    // is it safe to do malloc before lock?
     TQueueThread* new_thread = malloc(sizeof(TQueueThread));
     new_thread->thread = thread;
     new_thread->next = NULL;
@@ -79,6 +77,8 @@ void TQueueSubscribe(TQueue *queue, pthread_t *thread){
     dbgTQueuePrint(queue);
 
     ++queue->subscribers;
+
+    if(queue->subscribers > 0x40000000) TQueueCleanUp(queue);
 
     thread_ptr = queue->hashmap[TQueueHash(thread)];
     if(thread_ptr == NULL) queue->hashmap[TQueueHash(thread)] = new_thread;
@@ -132,7 +132,6 @@ void TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
 }
 
 void TQueuePut(TQueue *queue, void *msg){
-    // is it safe to do malloc before lock?
     TQueueMessage* new_message = malloc(sizeof(TQueueMessage));
     new_message->next = NULL;
     new_message->unsubscribed = 0;
@@ -342,7 +341,17 @@ unsigned TQueueHash(pthread_t *thread){
     return (unsigned)(*((long unsigned*)thread) % 4294967311UL % (unsigned long)HASHMAP_SIZE);
 }
 
-// void TQueueCleanUp
+void TQueueCleanUp(TQueue *queue){
+    unsigned total_unsubscribed = 0;
+    TQueueMessage* message_ptr = queue->head;
+    do {
+        message_ptr->count -= total_unsubscribed;
+        total_unsubscribed += message_ptr->unsubscribed;
+        message_ptr->unsubscribed = 0;
+        message_ptr = message_ptr->next;
+    } while(message_ptr != NULL);
+    queue->subscribers -= total_unsubscribed;
+}
 
 #define ITER_LIMIT 1024
 void TQueuePrint(TQueue *queue){
