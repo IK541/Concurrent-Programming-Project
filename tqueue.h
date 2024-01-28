@@ -1,8 +1,6 @@
 #pragma once
 #include <pthread.h>
 
-#define HASHMAP_SIZE 16U
-
 typedef struct TQueueMessage TQueueMessage;
 typedef struct TQueueThread TQueueThread;
 typedef struct TQueue TQueue;
@@ -24,6 +22,7 @@ struct TQueue{
     unsigned size;
     unsigned max_size;
     unsigned subscribers;
+    unsigned hashmap_size;
     TQueueThread** hashmap;
     TQueueMessage* head;
     TQueueMessage* tail;
@@ -49,8 +48,9 @@ int TQueueSetSize(TQueue *queue, int *size);
 // returns 0 - no elements removed, 1 - one element removed, -1 - operation failed
 int TQueueRemove(TQueue *queue, void *msg);
 
+void TQueueCreateQueueHash(TQueue *queue, int *size, int *hashmap_size);
 
 // non-interface functions
-unsigned TQueueHash(pthread_t *thread);
+unsigned TQueueHash(TQueue *queue, pthread_t *thread);
 void TQueueCleanUp(TQueue *queue);
 void TQueuePrint(TQueue *tqueue);

@@ -11,30 +11,11 @@
     #define dbgTQueuePrint(x)
 #endif
 
+#define DEFAULT_HASHMAP_SIZE 16
+
 void TQueueCreateQueue(TQueue *queue, int *size){
-    queue->max_size = (unsigned)*size;
-    queue->size = 0;
-    queue->subscribers = 0;
-
-    queue->hashmap = malloc(HASHMAP_SIZE*sizeof(TQueueThread*));
-    for(unsigned i = 0; i < HASHMAP_SIZE; ++i)
-        queue->hashmap[i] = NULL;
-
-    queue->head = malloc(sizeof(TQueueMessage));
-    queue->tail = queue->head;
-    queue->head->message = NULL;
-    queue->head->next = NULL;
-
-    queue->destroyed = 0;
-    queue->put_locked = 0;
-    queue->get_locked = 0;
-
-    pthread_cond_init(&queue->get_cond,NULL);
-    pthread_cond_init(&queue->put_cond,NULL);
-    pthread_mutex_init(&queue->lock,NULL);
-
-    dbgprintf("NEW QUEUE\n");
-    dbgTQueuePrint(queue);
+    int hashmap_size = DEFAULT_HASHMAP_SIZE;
+    TQueueCreateQueueHash(queue, size, &hashmap_size);
 }
 
 void TQueueDestroyQueue(TQueue *queue){
@@ -63,7 +44,7 @@ void TQueueDestroyQueue(TQueue *queue){
         dbgprintf("RETRY DESTROYIN (2)\n");
     }
 
-    for(unsigned i = 0; i < HASHMAP_SIZE; ++i){
+    for(unsigned i = 0; i < queue->hashmap_size; ++i){
         hashmap_pos = queue->hashmap[i];
         while(hashmap_pos != NULL){
             next_thread = hashmap_pos->next;
@@ -93,7 +74,7 @@ int TQueueSubscribe(TQueue *queue, pthread_t *thread){
     int ret = -1;
     TQueueThread* thread_ptr;
     TQueueThread* new_thread;
-    unsigned hash = TQueueHash(thread);
+    unsigned hash = TQueueHash(queue, thread);
 
     pthread_mutex_lock(&queue->lock);
 
@@ -133,6 +114,7 @@ int TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
     int ret = -1;
     TQueueThread* thread_ptr;
     TQueueThread* last_ptr;
+    unsigned hash = TQueueHash(queue, thread);
 
     pthread_mutex_lock(&queue->lock);
 
@@ -141,10 +123,10 @@ int TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
     dbgprintf("BEFORE UNSUBSCRIBE (%p)\n",thread);
     dbgTQueuePrint(queue);
 
-    thread_ptr = queue->hashmap[TQueueHash(thread)];
+    thread_ptr = queue->hashmap[hash];
     if(thread_ptr == NULL) goto end;
     if(thread_ptr->thread == thread){
-        queue->hashmap[TQueueHash(thread)] = thread_ptr->next;
+        queue->hashmap[hash] = thread_ptr->next;
     }
     else{
         while(thread_ptr->next != NULL && thread_ptr->thread != thread){
@@ -229,7 +211,7 @@ void* TQueueGet(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
     TQueueMessage* message_ptr;
     void* msg = NULL;
-    unsigned hash = TQueueHash(thread);
+    unsigned hash = TQueueHash(queue,thread);
     
     pthread_mutex_lock(&queue->lock);
 
@@ -285,7 +267,7 @@ int TQueueGetAvailable(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
     TQueueMessage* message_ptr;
     int available = -1;
-    unsigned hash = TQueueHash(thread);
+    unsigned hash = TQueueHash(queue,thread);
 
     pthread_mutex_lock(&queue->lock);
 
@@ -352,7 +334,7 @@ int TQueueRemove(TQueue *queue, void *msg){
     message_ptr->next->count -= message_ptr->unsubscribed;
     message_ptr->next->unsubscribed += message_ptr->unsubscribed;
 
-    for(unsigned i = 0; i < HASHMAP_SIZE; ++i){
+    for(unsigned i = 0; i < queue->hashmap_size; ++i){
             thread_ptr = queue->hashmap[i];
             while(thread_ptr != NULL){
                 if(thread_ptr->message_ptr == message_ptr)
@@ -395,7 +377,7 @@ int TQueueSetSize(TQueue *queue, int *size){
         dbgprintf("to remove: %p\n",to_remove);
         queue->head = to_remove->next;
 
-        for(unsigned i = 0; i < HASHMAP_SIZE; ++i){
+        for(unsigned i = 0; i < queue->hashmap_size; ++i){
             thread_ptr = queue->hashmap[i];
             while(thread_ptr != NULL){
                 if(thread_ptr->message_ptr == to_remove)
@@ -422,14 +404,14 @@ int TQueueSetSize(TQueue *queue, int *size){
 
 // non-interface functions:
 
-unsigned TQueueHash(pthread_t *thread){
+unsigned TQueueHash(TQueue* queue, pthread_t *thread){
     unsigned long hash = 0xcbf29ce484222325UL;
     unsigned long prime = 0x100000001b3UL;
     unsigned long x = *((unsigned long*)thread);
     do {
         hash = (hash ^ (x & 0xff))*prime;
     } while(x >>= 8);
-    return (unsigned)((hash) % (unsigned long)HASHMAP_SIZE);
+    return (unsigned)((hash) % (unsigned long)queue->hashmap_size);
 }
 
 void TQueueCleanUp(TQueue *queue){
@@ -460,7 +442,7 @@ void TQueuePrint(TQueue *queue){
     printf("get locked: %d\n", queue->get_locked);
     printf("put locked: %d\n", queue->put_locked);
     printf("hashmap:\n");
-    for(int i = 0; i < HASHMAP_SIZE; ++i){
+    for(int i = 0; i < queue->hashmap_size; ++i){
         printf("[%d]",i);
         thread_ptr = queue->hashmap[i];
         while(thread_ptr != NULL){
@@ -478,4 +460,31 @@ void TQueuePrint(TQueue *queue){
     
     fflush(stdout);
     
+}
+
+void TQueueCreateQueueHash(TQueue *queue, int *size, int *hashmap_size){
+    queue->max_size = (unsigned)*size;
+    queue->size = 0;
+    queue->subscribers = 0;
+    queue->hashmap_size = (unsigned)*hashmap_size;
+
+    queue->hashmap = malloc(queue->hashmap_size*sizeof(TQueueThread*));
+    for(unsigned i = 0; i < queue->hashmap_size; ++i)
+        queue->hashmap[i] = NULL;
+
+    queue->head = malloc(sizeof(TQueueMessage));
+    queue->tail = queue->head;
+    queue->head->message = NULL;
+    queue->head->next = NULL;
+
+    queue->destroyed = 0;
+    queue->put_locked = 0;
+    queue->get_locked = 0;
+
+    pthread_cond_init(&queue->get_cond,NULL);
+    pthread_cond_init(&queue->put_cond,NULL);
+    pthread_mutex_init(&queue->lock,NULL);
+
+    dbgprintf("NEW QUEUE\n");
+    dbgTQueuePrint(queue);
 }
