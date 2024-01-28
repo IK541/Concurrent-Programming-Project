@@ -44,8 +44,10 @@ int TQueueSubscribe(TQueue *queue, pthread_t *thread);
 int TQueueUnsubscribe(TQueue *queue, pthread_t *thread);
 int TQueuePut(TQueue *queue, void *msg);
 int TQueueGetAvailable(TQueue *queue, pthread_t *thread);
-int TQueueRemove(TQueue *queue, void *msg);
 int TQueueSetSize(TQueue *queue, int *size);
+
+// returns 0 - no elements removed, 1 - one element removed, -1 - operation failed
+int TQueueRemove(TQueue *queue, void *msg);
 
 
 // non-interface functions
