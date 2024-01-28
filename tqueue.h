@@ -34,7 +34,6 @@ struct TQueue{
 };
 
 void TQueueCreateQueue(TQueue *queue, int *size);
-void TQueueCreateQueueHash(TQueue *queue, int *size, int *hashmap_size);
 void TQueueDestroyQueue(TQueue *queue);
 void* TQueueGet(TQueue *queue, pthread_t *thread);
 
@@ -47,3 +46,7 @@ int TQueueSetSize(TQueue *queue, int *size);
 
 // return value: 0 - no elements removed, 1 - one element removed, -1 - operation failed
 int TQueueRemove(TQueue *queue, void *msg);
+
+// Not included in specification:
+void TQueueCreateQueueHash(TQueue *queue, int *size, int *hashmap_size);
+int TQueueSetHashmapSize(TQueue *queue, int *hashmap_size);

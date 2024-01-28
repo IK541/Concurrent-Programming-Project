@@ -10,7 +10,6 @@
 #define PUBLISHERS 4
 #define PUBLICATIONS 16
 #define SUBSCRIBERS 16
-#define REMOVERS 1
 
 #define ARR_SIZE (PUBLISHERS*PUBLICATIONS)
 
@@ -88,6 +87,7 @@ int main() {
     TQueue tqueue;
     int size = QUEUE_SIZE;
     TQueueCreateQueue(&tqueue,&size);
+    int hashmap_size = 16;
 
     int** arr = malloc(ARR_SIZE*sizeof(int*));
     for(int i = 0; i < ARR_SIZE; ++i){
@@ -126,7 +126,11 @@ int main() {
         pthread_create(subscribers[i],NULL,subscriber,sub_data_arr[i]);
     }
 
-    sleep(5);
+    for(int i = 0; i < 4; ++i){
+        sleep(1);
+        hashmap_size *= 2;
+        TQueueSetHashmapSize(&tqueue, &hashmap_size);
+    }
 
     TQueueDestroyQueue(&tqueue);
 

@@ -79,9 +79,11 @@ int TQueueSubscribe(TQueue *queue, pthread_t *thread){
     int ret = -1;
     TQueueThread* thread_ptr;
     TQueueThread* new_thread;
-    unsigned hash = TQueueHash(queue, thread);
+    unsigned hash;
 
     pthread_mutex_lock(&queue->lock);
+
+    hash = TQueueHash(queue, thread);
 
     if(queue->destroyed) goto end;
 
@@ -120,9 +122,11 @@ int TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
     TQueueThread* last_ptr;
     TQueueMessage* message_ptr;
-    unsigned hash = TQueueHash(queue, thread);
+    unsigned hash;
 
     pthread_mutex_lock(&queue->lock);
+
+    hash = TQueueHash(queue, thread);
 
     if(queue->destroyed) goto end;
 
@@ -232,9 +236,11 @@ void* TQueueGet(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
     TQueueMessage* message_ptr;
     void* msg = NULL;
-    unsigned hash = TQueueHash(queue,thread);
+    unsigned hash;
     
     pthread_mutex_lock(&queue->lock);
+
+    hash = TQueueHash(queue,thread);
 
     if(queue->destroyed) goto end;
 
@@ -288,9 +294,11 @@ int TQueueGetAvailable(TQueue *queue, pthread_t *thread){
     TQueueThread* thread_ptr;
     TQueueMessage* message_ptr;
     int available = -1;
-    unsigned hash = TQueueHash(queue,thread);
+    unsigned hash;
 
     pthread_mutex_lock(&queue->lock);
+
+    hash = TQueueHash(queue,thread);
 
     if(queue->destroyed) goto end;
 
@@ -509,3 +517,48 @@ void TQueueCreateQueueHash(TQueue *queue, int *size, int *hashmap_size){
     dbgprintf("NEW QUEUE\n");
     dbgTQueuePrint(queue);
 }
+
+int TQueueSetHashmapSize(TQueue *queue, int *hashmap_size){
+    int ret = -1;
+    unsigned old_size;
+    TQueueThread** old_hashmap;
+    TQueueThread* hashmap_pos;
+    TQueueThread* next_thread;
+    TQueueThread* thread_ptr;
+    unsigned hash;
+
+    pthread_mutex_lock(&queue->lock);
+
+    if(queue->destroyed) goto end;
+
+    old_size = queue->hashmap_size;
+    old_hashmap = queue->hashmap;
+    queue->hashmap_size = *hashmap_size;
+    queue->hashmap = malloc(queue->hashmap_size*sizeof(TQueueThread*));
+
+    for(int i = 0; i < old_size; ++i){
+        hashmap_pos = old_hashmap[i];
+        while(hashmap_pos != NULL){
+            hash = TQueueHash(queue, hashmap_pos->thread);
+            next_thread = hashmap_pos->next;
+            hashmap_pos->next = NULL;
+            // add
+            thread_ptr = queue->hashmap[hash];
+            if(thread_ptr == NULL) queue->hashmap[hash] = hashmap_pos;
+            else {
+                while(thread_ptr->next != NULL)
+                    thread_ptr = thread_ptr->next;
+                thread_ptr->next = hashmap_pos;
+            }
+            hashmap_pos = next_thread;
+        }
+    } free(old_hashmap);
+
+    ret = 0;
+    end:
+    pthread_mutex_unlock(&queue->lock);
+
+    return ret;
+}
+
+
