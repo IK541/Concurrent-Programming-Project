@@ -11,8 +11,13 @@
     #define dbgTQueuePrint(x)
 #endif
 
-#define DEFAULT_HASHMAP_SIZE 16
 
+unsigned TQueueHash(TQueue *queue, pthread_t *thread);
+void TQueueCleanUp(TQueue *queue);
+void TQueuePrint(TQueue *tqueue);
+
+
+#define DEFAULT_HASHMAP_SIZE 16
 void TQueueCreateQueue(TQueue *queue, int *size){
     int hashmap_size = DEFAULT_HASHMAP_SIZE;
     TQueueCreateQueueHash(queue, size, &hashmap_size);
