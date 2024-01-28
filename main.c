@@ -40,7 +40,7 @@ void* publisher(void* arg){
         if(i) continue;
 
         rand_num = rand_r(&rand_state) % ARR_SIZE;
-        if(TQueueRemove(tqueue,arr[rand_num])) break;
+        if(TQueueRemove(tqueue,arr[rand_num]) < 0) break;
         printf("> thread %d removed: %d\n",id,*arr[i]);
         if(!(rand_num%16)){
             rand_num += 1;
@@ -48,7 +48,7 @@ void* publisher(void* arg){
         }
     }
 
-    printf("[SUBSCRIBER END]\n");
+    printf("[PUBLISHER END]\n");
 
     return NULL;
 }
@@ -68,18 +68,18 @@ void* subscriber(void* arg){
         if(np == NULL) break;
         n = *np;
         printf("> thread %d got: %d\n",id,n);
-    //     if(!(n%16)){
-    //         // if(TQueueUnsubscribe(tqueue,&this_thread)) break;
-    //         // if(TQueueSubscribe(tqueue,&this_thread)) break;
-    //     }
-    //     n = TQueueGetAvailable(tqueue,&this_thread);
-    //     if(n < 0) break;
-    //     printf("> thread %d has available: %d\n",id,n);
+        if(!(n%16)){
+            if(TQueueUnsubscribe(tqueue,&this_thread)) break;
+            if(TQueueSubscribe(tqueue,&this_thread)) break;
+        }
+        n = TQueueGetAvailable(tqueue,&this_thread);
+        if(n < 0) break;
+        printf("> thread %d has available: %d\n",id,n);
     }
 
     TQueueUnsubscribe(tqueue,&this_thread);
 
-    printf("[PUBLISHER END]\n");
+    printf("[SUBSCRIBER END]\n");
 
     return NULL;
 }
@@ -126,7 +126,7 @@ int main() {
         pthread_create(subscribers[i],NULL,subscriber,sub_data_arr[i]);
     }
 
-    sleep(1);
+    sleep(5);
 
     TQueueDestroyQueue(&tqueue);
 

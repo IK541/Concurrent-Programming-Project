@@ -1,4 +1,3 @@
-#pragma once
 #include <pthread.h>
 
 typedef struct TQueueMessage TQueueMessage;
@@ -7,8 +6,8 @@ typedef struct TQueue TQueue;
 
 struct TQueueMessage{
     void* message;
-    unsigned count;
-    unsigned unsubscribed;
+    int count;
+    int unsubscribed;
     TQueueMessage* next;
 };
 
@@ -21,7 +20,7 @@ struct TQueueThread{
 struct TQueue{
     unsigned size;
     unsigned max_size;
-    unsigned subscribers;
+    int subscribers;
     unsigned hashmap_size;
     TQueueThread** hashmap;
     TQueueMessage* head;
@@ -46,5 +45,5 @@ int TQueuePut(TQueue *queue, void *msg);
 int TQueueGetAvailable(TQueue *queue, pthread_t *thread);
 int TQueueSetSize(TQueue *queue, int *size);
 
-// returns 0 - no elements removed, 1 - one element removed, -1 - operation failed
+// return value: 0 - no elements removed, 1 - one element removed, -1 - operation failed
 int TQueueRemove(TQueue *queue, void *msg);

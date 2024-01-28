@@ -119,6 +119,7 @@ int TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
     int ret = -1;
     TQueueThread* thread_ptr;
     TQueueThread* last_ptr;
+    TQueueMessage* message_ptr;
     unsigned hash = TQueueHash(queue, thread);
 
     pthread_mutex_lock(&queue->lock);
@@ -134,15 +135,29 @@ int TQueueUnsubscribe(TQueue *queue, pthread_t *thread){
         queue->hashmap[hash] = thread_ptr->next;
     }
     else{
-        while(thread_ptr->next != NULL && thread_ptr->thread != thread){
+        while(thread_ptr != NULL && thread_ptr->thread != thread){
             last_ptr = thread_ptr;
             thread_ptr = thread_ptr->next;
-        } if(thread_ptr->next == NULL) goto end;
+        } if(thread_ptr == NULL) goto end;
         last_ptr->next = thread_ptr->next;
     }
 
-    --thread_ptr->message_ptr->count;
-    ++thread_ptr->message_ptr->unsubscribed;
+    message_ptr = thread_ptr->message_ptr;
+    --message_ptr->count;
+    ++message_ptr->unsubscribed;
+
+    if(message_ptr == queue->head && !message_ptr->count){
+        dbgprintf("REMOVING_UNSUB\n");
+        while(!message_ptr->count && message_ptr->next != NULL){
+            queue->head = message_ptr->next;
+            queue->head->count -= message_ptr->unsubscribed;
+            queue->head->unsubscribed += message_ptr->unsubscribed;
+            free(message_ptr);
+            --queue->size;
+            message_ptr = queue->head;
+        }
+        pthread_cond_broadcast(&queue->put_cond);
+    }
 
     free(thread_ptr);
 
@@ -169,7 +184,7 @@ int TQueuePut(TQueue *queue, void *msg){
     dbgprintf("TRY PUT (%p)\n",msg);
     dbgTQueuePrint(queue);
 
-    if(!queue->subscribers) {
+    if(queue->subscribers == queue->tail->unsubscribed) {
         dbgprintf("NO SUBSCRIBERS\n");
         ret = 0;
         goto end;
@@ -193,11 +208,12 @@ int TQueuePut(TQueue *queue, void *msg){
     new_message = malloc(sizeof(TQueueMessage));
     new_message->next = NULL;
     new_message->unsubscribed = 0;
+    new_message->count = 0;
 
     ++queue->size;
     tail = queue->tail;
     tail->message = msg;
-    tail->count = queue->subscribers;
+    tail->count = tail->count + queue->subscribers;
     tail->next = new_message;
     queue->tail = tail->next;
     pthread_cond_broadcast(&queue->get_cond);
@@ -420,7 +436,7 @@ unsigned TQueueHash(TQueue* queue, pthread_t *thread){
 }
 
 void TQueueCleanUp(TQueue *queue){
-    unsigned total_unsubscribed = 0;
+    int total_unsubscribed = 0;
     TQueueMessage* message_ptr = queue->head;
     do {
         message_ptr->count -= total_unsubscribed;
