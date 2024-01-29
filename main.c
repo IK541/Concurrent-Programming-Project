@@ -127,12 +127,12 @@ int main() {
     }
 
     for(int i = 0; i < 4; ++i){
-        sleep(1);
+        usleep(5000);
         hashmap_size *= 2;
         TQueueSetHashmapSize(&tqueue, &hashmap_size);
     }
 
-    TQueueDestroyQueue(&tqueue);
+    TQueueDestroyQueue_1(&tqueue);
 
     for(int i = 0; i < PUBLISHERS; ++i){
         pthread_join(*publishers[i],NULL);
@@ -140,6 +140,8 @@ int main() {
     for(int i = 0; i < SUBSCRIBERS; ++i){
         pthread_join(*subscribers[i],NULL);
     }
+
+    TQueueDestroyQueue_2(&tqueue);
 
     for(int i = 0; i < PUBLISHERS; ++i){
         free(publishers[i]);
