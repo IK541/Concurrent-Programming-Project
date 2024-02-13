@@ -131,7 +131,7 @@ int TQueueSubscribe(TQueue * queue, pthread_t * thread) {
 
 	if (queue->destroyed)
 		goto end;
-	ret = 1;
+	ret = -2;
 
 	dbgprintf("BEFORE SUBSCRIBE (%p)\n", thread);
 	dbgTQueuePrint(queue);
@@ -180,7 +180,7 @@ int TQueueUnsubscribe(TQueue * queue, pthread_t * thread) {
 
 	if (queue->destroyed)
 		goto end;
-	ret = 1;
+	ret = -2;
 
 	dbgprintf("BEFORE UNSUBSCRIBE (%p)\n", thread);
 	dbgTQueuePrint(queue);
