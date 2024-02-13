@@ -46,13 +46,13 @@ void TQueueDestroyQueue_2(TQueue * tqueue);
 // returns:
 // 0 on success
 // -1 if the queue has already been destroyed
-// 1 if the thread is already subscribed
+// -2 if the thread is already subscribed
 int TQueueSubscribe(TQueue * queue, pthread_t * thread);
 
 // returns:
 // 0 on success
 // -1 if the queue has already been destroyed
-// 1 if the thread is not subscribed
+// -2 if the thread is not subscribed
 int TQueueUnsubscribe(TQueue * queue, pthread_t * thread);
 
 // if the queue is full at the moment, the function is blocking
@@ -72,7 +72,7 @@ int TQueueGetAvailable(TQueue * queue, pthread_t * thread);
 
 // returns:
 // 0 on success (an element has been removed)
-// 1 if no element with given message is on the queue
+// -2 if no element with given message is on the queue
 // -1 if the queue has already been destroyed
 // if the same message is duplicated on the queue,
 // this function will remove the oldest instance
