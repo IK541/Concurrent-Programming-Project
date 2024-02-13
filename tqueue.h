@@ -8,6 +8,7 @@ struct TQueueMessage {
 	void *message;
 	int count;
 	int unsubscribed;
+	int num;
 	TQueueMessage *next;
 };
 

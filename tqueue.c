@@ -5,6 +5,7 @@
 
 #ifdef DEBUG
 #define dbgprintf(...) do {printf(__VA_ARGS__); fflush(stdout);} while(0)
+void TQueuePrint(TQueue * tqueue);
 #define dbgTQueuePrint(x) TQueuePrint(x)
 #else
 #define dbgprintf(...)
@@ -12,8 +13,8 @@
 #endif
 
 unsigned TQueueHash(TQueue * queue, pthread_t * thread);
-void TQueueCleanUp(TQueue * queue);
-void TQueuePrint(TQueue * tqueue);
+void TQueueSubscriptionsCleanUp(TQueue * queue);
+void TQueueIdCleanup(TQueue * queue);
 
 #define DEFAULT_HASHMAP_SIZE 16
 void TQueueCreateQueue(TQueue * queue, int *size) {
@@ -138,7 +139,7 @@ int TQueueSubscribe(TQueue * queue, pthread_t * thread) {
 	++queue->subscribers;
 
 	if (queue->subscribers > 0x40000000)
-		TQueueCleanUp(queue);
+		TQueueSubscriptionsCleanUp(queue);
 
 	new_thread = malloc(sizeof(TQueueThread));
 	new_thread->thread = thread;
@@ -263,13 +264,16 @@ int TQueuePut(TQueue * queue, void *msg) {
 	dbgprintf("BEFORE PUT (%p)\n", msg);
 	dbgTQueuePrint(queue);
 
+	tail = queue->tail;
 	new_message = malloc(sizeof(TQueueMessage));
 	new_message->next = NULL;
 	new_message->unsubscribed = 0;
 	new_message->count = 0;
+	new_message->num = tail->num + 1;
+	if(new_message->num > 0x40000000)
+		TQueueIdCleanup(queue);
 
 	++queue->size;
-	tail = queue->tail;
 	tail->message = msg;
 	tail->count = tail->count + queue->subscribers;
 	tail->next = new_message;
@@ -341,7 +345,6 @@ void *TQueueGet(TQueue * queue, pthread_t * thread) {
 	dbgTQueuePrint(queue);
 
  end:
-
 	pthread_mutex_unlock(&queue->lock);
 
 	return msg;
@@ -372,11 +375,7 @@ int TQueueGetAvailable(TQueue * queue, pthread_t * thread) {
 		goto end;
 	message_ptr = thread_ptr->message_ptr;
 
-	available = 0;
-	while (message_ptr->next != NULL) {
-		message_ptr = message_ptr->next;
-		++available;
-	}
+	available = queue->tail->num - message_ptr->num;
 
 	dbgprintf("AFTER GET_AVAILABLE (%p)\n", thread);
 	dbgTQueuePrint(queue);
@@ -403,18 +402,21 @@ int TQueueRemoveMsg(TQueue * queue, void *msg) {
 
 	message_ptr = queue->head;
 	if (message_ptr->next == NULL) {
-		ret = 0;
+		ret = -2;
 		goto end;
 	}
 	if (message_ptr->message == msg) {
 		queue->head = message_ptr->next;
 	} else {
 		while (message_ptr->next != NULL && message_ptr->message != msg) {
+			--message_ptr->num;
 			last_message = message_ptr;
 			message_ptr = message_ptr->next;
 		}
 		if (message_ptr->next == NULL) {
-			ret = 0;
+			if(message_ptr->num < 0xbfffffff)
+				TQueueIdCleanup(queue);
+			ret = -2;
 			goto end;
 		}
 		last_message->next = message_ptr->next;
@@ -438,10 +440,9 @@ int TQueueRemoveMsg(TQueue * queue, void *msg) {
 
 	dbgprintf("AFTER REMOVE (%p)\n", msg);
 	dbgTQueuePrint(queue);
-	ret = 1;
+	ret = 0;
 
  end:
-
 	pthread_mutex_unlock(&queue->lock);
 
 	return ret;
@@ -549,7 +550,7 @@ unsigned TQueueHash(TQueue * queue, pthread_t * thread) {
 	return (unsigned)((hash) % (unsigned long)queue->hashmap_size);
 }
 
-void TQueueCleanUp(TQueue * queue) {
+void TQueueSubscriptionsCleanUp(TQueue * queue) {
 	int total_unsubscribed = 0;
 	TQueueMessage *message_ptr = queue->head;
 	do {
@@ -561,7 +562,17 @@ void TQueueCleanUp(TQueue * queue) {
 	queue->subscribers -= total_unsubscribed;
 }
 
+void TQueueIdCleanup(TQueue * queue) {
+	unsigned lowest_id = queue->head->num;
+	TQueueMessage *message_ptr = queue->head;
+	do {
+		message_ptr->num -= lowest_id;
+		message_ptr = message_ptr->next;
+	} while (message_ptr != NULL);
+}
+
 #define ITER_LIMIT 1024
+#ifdef DEBUG
 void TQueuePrint(TQueue * queue) {
 
 	TQueueThread *thread_ptr;
@@ -599,3 +610,4 @@ void TQueuePrint(TQueue * queue) {
 	fflush(stdout);
 
 }
+#endif

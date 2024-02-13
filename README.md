@@ -12,7 +12,7 @@ Information about threads is stored in a hashmap using FNV hash function and cha
 
 The structure of the ```Tqueue```, linked list and hashmap is shown in the picture below:
 
-![queue structure](./SCP.png)
+![queue structure](./fig.png)
 
 If a subsciber attempts to read a message while no messages are available, it gets locked on a conditional variable ```get_cond``` and a variable ```get_locked``` is incremented until the thread leaves the condition variable. Similarly if a publisher attempts to add a message while the queue is full, it gets  locked on a conditional variable ```put_cond``` and a variable ```put_locked``` is incremented until the thread leaves the condition variable. These locked threads counters are used to ensure no threads are waiting on condition variables when the queue gets destroyed as this would lead to undefined behaviour.
 
@@ -28,7 +28,7 @@ The available operations are as following (the prefix ```TQueue``` is used to av
 
 ```int TQueueDestroyQueue(TQueue * queue)``` - destroys queue, if the user cannot guarantee that no new operations will be performed on the queue it is advised to use functions ```TQueueDestroyQueue_1(TQueue *queue)``` and ```TQueueDestroyQueue_2(TQueue *queue)```; returns 0 on sucess, -1 if the queue has already been destroyed*
 
-```int TQueueDestroyQueue_1(TQueue * queue)``` - destroys all of the queue except for the mutex and sets destroy variable to 1; this causes all operations acessing the queue to fail and return information that the queue has been destroyed which can be used for synchronization as shown in example file ```main.c```; returns 0 on sucess, -1 if the queue has already been destroyed*
+```int TQueueDestroyQueue_1(TQueue * queue)``` - destroys all of the queue except for the mutex and sets destroy variable to 1; this causes all operations acessing the queue to fail and return information that the queue has been destroyed which can be used for synchronization as shown in example file ```example.c```; returns 0 on sucess, -1 if the queue has already been destroyed*
 
 ```void TQueueDestroyQueue_2(TQueue * queue)``` - destroys the mutex, trying to access the queue afterwards will result in undefined behaviour
 
@@ -42,7 +42,7 @@ The available operations are as following (the prefix ```TQueue``` is used to av
 
 ```int TQueueGetAvailable(TQueue * queue, pthread_t * thread)``` - returns the number of messages available to the thread ```thread```; returns -1 if the queue has already been destroyed*, -2 if the thread is not subscribed
 
-```int TQueueRemoveMsg(TQueue * queue, void *msg)``` - removes message ```msg``` from the queue, if the same message is duplicated on the queue, this function will remove the oldest instance; returns 0 on sucess, -1 if the queue has already been destroyed*, 1 if the message is not present in the queue
+```int TQueueRemoveMsg(TQueue * queue, void *msg)``` - removes message ```msg``` from the queue, if the same message is duplicated on the queue, this function will remove the oldest instance; returns 0 on sucess, -1 if the queue has already been destroyed*, -2 if the message is not present in the queue
 
 ```int TQueueSetSize(TQueue * queue, int *size)``` - sets maximum size of the queue to ```size```, if the new size exceeds the former one, the oldest messages are removed; returns 0 on sucess, -1 if the queue has already been destroyed*
 
@@ -58,20 +58,20 @@ The project contains following files:
 
 ```tqueue.c``` - implementations for the publish-subscribe queue
 
-```main.c``` - example of use of the publish-subscribe queue
+```example.c``` - example of use of the publish-subscribe queue
 
 ## Compilation
 
-An executable showcasing how the queue works can be compiled to ```main``` file using following command:
+An executable showcasing how the queue works can be compiled to ```example``` file using following command:
 
 ```sh
-gcc -Wall -lpthread tqueue.c main.c -o main
+gcc -Wall -lpthread tqueue.c example.c -o example
 ```
 
 if the ```queue.c``` file is compiled with DEBUG macro it will print all operations on the queue and state of the queue before and after each operation to stdout:
 
 ```sh
-gcc -Wall -lpthread -DDEBUG tqueue.c main.c -o main
+gcc -Wall -lpthread -DDEBUG tqueue.c example.c -o example
 ```
 
 It is also possible to use ```tqueue.c``` and ```tqueue.h``` files in other projects. To do so, the header file must be included in the project file and the project files must be compiled with the ```tqueue.c``` file.

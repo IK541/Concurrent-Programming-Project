@@ -3,6 +3,6 @@
 !.gitignore
 !tqueue.h
 !tqueue.c
-!main.c
+!example.c
 !README.md
-!SCP.png
+!fig.png
